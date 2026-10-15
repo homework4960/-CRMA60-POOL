@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ตรวจสอบข้อมูล</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', 'Sarabun', sans-serif;
+      margin: 0;
+      padding: 24px;
+      background: #f5f6f8;
+      color: #222;
+    }
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+      background: #fff;
+      border-radius: 10px;
+      padding: 24px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+    h2 {
+      margin-top: 0;
+      color: #1a1a1a;
+    }
+    .toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    #searchBox {
+      padding: 8px 12px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      min-width: 220px;
+      font-size: 14px;
+    }
+    #refreshBtn {
+      padding: 8px 16px;
+      border: none;
+      background: #2563eb;
+      color: #fff;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    #refreshBtn:hover { background: #1d4ed8; }
+    #status {
+      color: #666;
+      font-size: 13px;
+      margin-bottom: 12px;
+    }
+    .table-wrap {
+      overflow-x: auto;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      font-size: 14px;
+    }
+    th, td {
+      border: 1px solid #e3e3e3;
+      padding: 10px 14px;
+      text-align: left;
+      white-space: nowrap;
+    }
+    th {
+      background: #f4f6f8;
+      font-weight: 600;
+      position: sticky;
+      top: 0;
+    }
+    tr:nth-child(even) { background: #fafbfc; }
+    tr:hover { background: #eef4ff; }
+    .empty {
+      text-align: center;
+      padding: 30px;
+      color: #999;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>ตารางข้อมูล</h2>
+
+    <div class="toolbar">
+      <input type="text" id="searchBox" placeholder="ค้นหาข้อมูล...">
+      <button id="refreshBtn">รีเฟรชข้อมูล</button>
+    </div>
+
+    <div id="status">กำลังโหลดข้อมูล...</div>
+
+    <div class="table-wrap">
+      <table id="dataTable"></table>
+    </div>
+  </div>
+
+  <script>
+    const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSFfPECFln7Ktc1HEKF69TBMjCa1nP79ahxbWQVgveCldnnBbgHSelEZBcrZdmD2FVBpH_vpgu_OT55/pub?gid=0&single=true&output=csv';
+
+    let allRows = [];
+
+    async function loadData() {
+      const statusEl = document.getElementById('status');
+      statusEl.textContent = 'กำลังโหลดข้อมูล...';
+      try {
+        // กัน cache เก่าของ browser ด้วยการแปะ timestamp
+        const response = await fetch(CSV_URL + '&t=' + Date.now());
+
+        if (!response.ok) {
+          throw new Error('HTTP ' + response.status);
+        }
+
+        const csvText = await response.text();
+
+        const result = Papa.parse(csvText, {
+          header: true,
+          skipEmptyLines: true
+        });
+
+        allRows = result.data;
+        renderTable(allRows);
+        statusEl.textContent = `โหลดสำเร็จ ${allRows.length} แถว | อัปเดตล่าสุด: ${new Date().toLocaleTimeString('th-TH')}`;
+      } catch (err) {
+        statusEl.textContent = 'เกิดข้อผิดพลาดในการโหลดข้อมูล: ' + err.message;
+        console.error(err);
+      }
+    }
+
+    function renderTable(rows) {
+      const table = document.getElementById('dataTable');
+
+      if (!rows || rows.length === 0) {
+        table.innerHTML = '<tr><td class="empty">ไม่มีข้อมูล</td></tr>';
+        return;
+      }
+
+      const headers = Object.keys(rows[0]);
+
+      const theadHtml = `
+        <thead>
+          <tr>${headers.map(h => `<th>${escapeHtml(h)}</th>`).join('')}</tr>
+        </thead>
+      `;
+
+      const tbodyHtml = `
+        <tbody>
+          ${rows.map(row => `
+            <tr>${headers.map(h => `<td>${escapeHtml(row[h])}</td>`).join('')}</tr>
+          `).join('')}
+        </tbody>
+      `;
+
+      table.innerHTML = theadHtml + tbodyHtml;
+    }
+
+    function escapeHtml(text) {
+      if (text == null) return '';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // ค้นหา/กรองข้อมูลแบบ real-time
+    document.getElementById('searchBox').addEventListener('input', (e) => {
+      const keyword = e.target.value.toLowerCase().trim();
+      if (!keyword) {
+        renderTable(allRows);
+        return;
+      }
+      const filtered = allRows.filter(row =>
+        Object.values(row).some(val =>
+          String(val ?? '').toLowerCase().includes(keyword)
+        )
+      );
+      renderTable(filtered);
+    });
+
+    // ปุ่มรีเฟรชข้อมูลใหม่
+    document.getElementById('refreshBtn').addEventListener('click', loadData);
+
+    loadData();
+  </script>
+</body>
+</html>
